@@ -10,15 +10,17 @@ import matplotlib.pyplot as plt
 from nltk.corpus import stopwords
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from nltk.stem import WordNetLemmatizer
-from wordcloud import WordCloud,STOPWORDS
-from flask import Flask,render_template,request
+from wordcloud import WordCloud, STOPWORDS
+from flask import Flask, render_template, request
 import time
 
 from selenium.webdriver import Chrome
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 
 nltk.download('vader_lexicon')
 nltk.download('stopwords')
@@ -32,10 +34,12 @@ sia = SentimentIntensityAnalyzer()
 stop_words = stopwords.words('english')
 
 def returnytcomments(url):
-    data=[]
+    data = []
 
-    with Chrome(executable_path=r'C:\Program Files\chromedriver.exe') as driver:
-        wait = WebDriverWait(driver,15)
+    # Create a Service object using ChromeDriverManager
+    service = Service(ChromeDriverManager().install())
+    with Chrome(service=service) as driver:
+        wait = WebDriverWait(driver, 15)
         driver.get(url)
 
         for item in range(5): 
@@ -53,41 +57,40 @@ def clean(org_comments):
         x = x.split()
         x = [i.lower().strip() for i in x]
         x = [i for i in x if i not in stop_words]
-        x = [i for i in x if len(i)>2]
+        x = [i for i in x if len(i) > 2]
         x = [wnl.lemmatize(i) for i in x]
         y.append(' '.join(x))
     return y
 
 def create_wordcloud(clean_reviews):
-    # building our wordcloud and saving it
     for_wc = ' '.join(clean_reviews)
     wcstops = set(STOPWORDS)
-    wc = WordCloud(width=1400,height=800,stopwords=wcstops,background_color='white').generate(for_wc)
-    plt.figure(figsize=(20,10), facecolor='k', edgecolor='k')
+    wc = WordCloud(width=1400, height=800, stopwords=wcstops, background_color='white').generate(for_wc)
+    plt.figure(figsize=(20, 10), facecolor='k', edgecolor='k')
     plt.imshow(wc, interpolation='bicubic') 
     plt.axis('off')
     plt.tight_layout()
     CleanCache(directory='static/images')
     plt.savefig('static/images/woc.png')
     plt.close()
-    
+
 def returnsentiment(x):
-    score =  sia.polarity_scores(x)['compound']
+    score = sia.polarity_scores(x)['compound']
     
-    if score>0:
+    if score > 0:
         sent = 'Positive'
-    elif score==0:
+    elif score == 0:
         sent = 'Negative'
     else:
         sent = 'Neutral'
-    return score,sent
+    return score, sent
 
 
 @app.route('/')
 def home():
     return render_template('home.html')
 
-@app.route('/results',methods=['GET'])
+@app.route('/results', methods=['GET'])
 def result():    
     url = request.args.get('url')
     
@@ -95,7 +98,7 @@ def result():
     temp = []
 
     for i in org_comments:
-         if 5<len(i)<=500:
+        if 5 < len(i) <= 500:
             temp.append(i)
     
     org_comments = temp
@@ -104,36 +107,35 @@ def result():
 
     create_wordcloud(clean_comments)
     
-    np,nn,nne = 0,0,0
+    np, nn, nne = 0, 0, 0
 
     predictions = []
     scores = []
 
     for i in clean_comments:
-        score,sent = returnsentiment(i)
+        score, sent = returnsentiment(i)
         scores.append(score)
         if sent == 'Positive':
             predictions.append('POSITIVE')
-            np+=1
+            np += 1
         elif sent == 'Negative':
             predictions.append('NEGATIVE')
-            nn+=1
+            nn += 1
         else:
             predictions.append('NEUTRAL')
-            nne+=1
+            nne += 1
 
     dic = []
 
-    for i,cc in enumerate(clean_comments):
-        x={}
+    for i, cc in enumerate(clean_comments):
+        x = {}
         x['sent'] = predictions[i]
         x['clean_comment'] = cc
         x['org_comment'] = org_comments[i]
-        x['score'] = scores
+        x['score'] = scores[i]
         dic.append(x)
 
-    return render_template('result.html',n=len(clean_comments),nn=nn,np=np,nne=nne,dic=dic)
-    
+    return render_template('result.html', n=len(clean_comments), nn=nn, np=np, nne=nne, dic=dic)
     
 @app.route('/wc')
 def wc():
@@ -141,20 +143,13 @@ def wc():
 
 
 class CleanCache:
-	'''
-	this class is responsible to clear any residual csv and image files
-	present due to the past searches made.
-	'''
-	def __init__(self, directory=None):
-		self.clean_path = directory
-		# only proceed if directory is not empty
-		if os.listdir(self.clean_path) != list():
-			# iterate over the files and remove each file
-			files = os.listdir(self.clean_path)
-			for fileName in files:
-				print(fileName)
-				os.remove(os.path.join(self.clean_path,fileName))
-		print("cleaned!")
+    def __init__(self, directory=None):
+        self.clean_path = directory
+        if os.listdir(self.clean_path) != list():
+            files = os.listdir(self.clean_path)
+            for fileName in files:
+                os.remove(os.path.join(self.clean_path, fileName))
+        print("cleaned!")
 
 
 if __name__ == '__main__':
